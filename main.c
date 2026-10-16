@@ -15,10 +15,9 @@ typedef struct {
 
 static const char* kind_label[AUDIO_KIND_COUNT] = {"Input", "Output"};
 
-static void cmd_help(App* app, const char *args);
+static void cmd_help(App* app, const char* args);
 
-static void cmd_list(App* app, const char *args)
-{
+static void cmd_list(App* app, const char* args) {
     (void)args;
     for(int k = 0; k < AUDIO_KIND_COUNT;k++) {
         printf("%s devices:\n", kind_label[k]);
@@ -32,8 +31,7 @@ static void cmd_list(App* app, const char *args)
     }
 }
 
-static void cmd_select(App *app, const char *args)
-{
+static void cmd_select(App* app, const char* args) {
     char kind[8];
     int idx;
     if (sscanf(args, "%7s %d", kind, &idx) != 2) {
@@ -46,7 +44,7 @@ static void cmd_select(App *app, const char *args)
     else if (strcmp(kind, "out") == 0) k = AUDIO_OUTPUT;
     else { printf("unknown kind '%s' (use in or out)\n", kind); return; }
 
-    if (audio_select(app->audio, k, idx) != 0) {
+    if (AUDIO_FAILED(audio_select(app->audio, k, idx))) {
         printf("invalid index\n");
         return;
     }
@@ -54,8 +52,22 @@ static void cmd_select(App *app, const char *args)
     printf("%s device set to: %s\n", kind_label[k], audio_device_name(app->audio, k, idx));
 }
 
-static void cmd_exit(App* app, const char *args)
-{
+static void cmd_refresh(App* app, const char* args) {
+    (void)args;
+    for (int k = 0; k < AUDIO_KIND_COUNT; k++) {
+        AudioResult r = audio_refresh(app->audio, k);
+        if (AUDIO_FAILED(r)) { 
+            printf("%s: refresh failed\n", kind_label[k]); 
+            continue; 
+        }
+        if (r & AUDIO_INFO_DEVICES_ADDED)   printf("%s: device(s) added\n", kind_label[k]);
+        if (r & AUDIO_INFO_DEVICES_REMOVED) printf("%s: device(s) removed\n", kind_label[k]);
+        if (r & AUDIO_INFO_SELECTION_RESET) printf("%s device removed, now using default\n", kind_label[k]);
+    }
+    cmd_list(app, NULL);
+}
+
+static void cmd_exit(App* app, const char* args) {
     (void)args;
     app->running = 0;
 }
@@ -69,14 +81,14 @@ typedef struct {
 static const Command commands[] = {
     { "list",   "show input and output devices", cmd_list   },
     { "select", "select <in|out> <index>",       cmd_select },
+    { "refresh", "refresh device list",          cmd_refresh},
     { "help",   "show this list",                cmd_help   },
     { "exit",   "quit",                          cmd_exit   },
 };
 
 #define N_COMMANDS (sizeof commands / sizeof commands[0])
 
-static void cmd_help(App* app, const char *args) {
-
+static void cmd_help(App* app, const char* args) {
     (void)app;
     (void)args;
     for(size_t i = 0;i < N_COMMANDS;i++) {
@@ -97,9 +109,6 @@ static void dispatch(App* app, char* line) {
 
     for(size_t i = 0; i < N_COMMANDS; i++) {
         if(strcmp(commands[i].name, cmd) == 0) {
-
-            if(app->audio == NULL)
-                printf("Audio terminated: Closing Program\n");
             commands[i].run(app, args);
             return;
         }
@@ -108,7 +117,6 @@ static void dispatch(App* app, char* line) {
 }
 
 int main(void) {
-
     console_init();
     App app_state = {0};
 
